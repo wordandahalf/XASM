@@ -124,7 +124,9 @@ func parseLine(line xasmLine) xasmInstruction {
         if len(labelMatches) == 2 {
             instruction = xasmInstruction{"LABEL", []string {labelMatches[1]}}
         } else {
-            log.Fatalf( "Syntax error on line %d: malformed label\n%s\n%s^\n", line.number, line.content, strings.Repeat(" ", strings.Index(line.content, text)))
+            index := strings.Index(line.content, strings.Split(strings.TrimSpace(text), " ")[0])
+
+            log.Fatalf( "Syntax error on line %d: malformed label\n%s\n%s^\n", line.number, line.content, strings.Repeat(" ", index))
         }
     } else
     if instructionPattern.MatchString(text) {
