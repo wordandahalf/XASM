@@ -5,7 +5,7 @@
     LD      r0, 0x01
 loop:
     LD      r1, r0
-    ADD     r0, r2
+    ADD     r0, r2          ; r0 is an implied operand, it can be omitted.
     JC      halt            ; If there was overflow, stop the loop
 
     DSPLY   r0              ; Display the next number in the sequence

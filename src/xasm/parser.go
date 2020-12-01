@@ -113,8 +113,8 @@ var (
     instructionPattern, _       = regexp.Compile("^([a-zA-Z]+)(?: |$)")
 
     // Operand regexes
-    registerPattern, _          = regexp.Compile("^[r][0-7]$")
-    registerPointerPattern, _   = regexp.Compile("^\\[[r][0-7]]$")
+    registerPattern, _          = regexp.Compile("^r[0-7]$")
+    registerPointerPattern, _   = regexp.Compile("^\\[r[0-7]]$")
     numberPattern, _            = regexp.Compile("[0-9]+")// regexp.Compile("^(0x[[:xdigit:]]{1,2}|0[0-7]{0,3})$")
     labelOperandPattern, _      = regexp.Compile("^([a-zA-Z_]+)$")
 

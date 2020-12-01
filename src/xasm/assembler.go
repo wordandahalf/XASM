@@ -83,7 +83,7 @@ func encodeLoadRegisterWithRegister(operands []xasmOperand) []byte {
 }
 
 func encodeLoadRegisterPointerWithRegister(operands []xasmOperand) []byte {
-    dst := encodeRegister(operands[0].value.(string))
+    dst := encodeRegister(operands[0].value.(string)[1:3])
     src := encodeRegister(operands[1].value.(string))
 
     if dst != 0 {
@@ -113,6 +113,10 @@ func encodeAluOperation(operands []xasmOperand) []byte {
 
     if len(operands) == 3 {
         src = encodeRegister(operands[2].value.(string))
+
+        if encodeRegister(operands[1].value.(string)) != 0 {
+            log.Fatalf("Assembly error: invalid ALU destination register '%s'. Must be r0.\n", operands[1].value.(string))
+        }
     } else {
         src = encodeRegister(operands[1].value.(string))
     }
