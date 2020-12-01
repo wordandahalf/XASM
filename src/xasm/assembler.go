@@ -125,5 +125,5 @@ func encodeAluOperation(operands []xasmOperand) []byte {
 }
 
 func encodeJump(operands []xasmOperand) []byte {
-    return []byte { 0xC0 }
+    return []byte { 0xC0 | operands[0].value.(byte) }
 }

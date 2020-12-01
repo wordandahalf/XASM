@@ -146,6 +146,12 @@ var (
         "ADD":  0b110,
         "SUB":  0b111,
     }
+
+    flagValues              = map[string]byte {
+        "P":    0b00,
+        "Z":    0b01,
+        "C":    0b10,
+    }
 )
 
 // Parses the value of an xasmLine into an xasmInstruction
@@ -261,7 +267,13 @@ func parseOperand(operand string) xasmOperand {
 
 // Parses a jump instruction by prepending the second character of the mnemonic as a flag operand.
 func parseJump(mnemonic string, operands []xasmOperand) xasmInstruction {
-    return xasmInstruction{ "J", append([]xasmOperand { {flagOperand, strings.TrimPrefix(mnemonic, "J") } }, operands...)}
+    flagValue, e := flagValues[strings.TrimPrefix(mnemonic, "J")]
+
+    if e {
+        return xasmInstruction{ "J", append([]xasmOperand { {flagOperand, flagValue } }, operands...)}
+    } else {
+        return xasmInstruction{invalidOperand, operands}
+    }
 }
 
 // Parses an ALU instruction by prepending the ALU opcode of the instruction.
