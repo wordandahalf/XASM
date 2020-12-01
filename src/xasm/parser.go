@@ -26,6 +26,16 @@ type xasmInstruction struct {
     operands    []xasmOperand
 }
 
+func (instruction xasmInstruction) GetOperandTypes() [3]string {
+    var operandTypes [3]string
+
+    for i, operand := range instruction.operands {
+        operandTypes[i] = operand.operandType
+    }
+
+    return operandTypes
+}
+
 type xasmOperand struct {
     operandType string
     value       interface{}
@@ -191,7 +201,7 @@ func parseLine(line xasmLine) xasmInstruction {
         text := strings.Replace(text, instructionMatches[0], "", 1)
 
         mnemonic := instructionMatches[1]
-        operands := make([]xasmOperand, 0)
+        var operands []xasmOperand
 
         // If there is any text left it must be an operand
         if text != "" {
@@ -239,7 +249,7 @@ func parseOperand(operand string) xasmOperand {
         val, e := strconv.ParseInt(operand, 0, 8)
 
         if e == nil {
-            return xasmOperand{immediateOperand, val}
+            return xasmOperand{immediateOperand, (byte) (val & 0xFF)}
         }
     } else
     if labelOperandPattern.MatchString(operand) {

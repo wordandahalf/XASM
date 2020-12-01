@@ -2,21 +2,23 @@ package main
 
 import (
     "./xasm"
-    "fmt"
-    "os"
+    "flag"
+    "strings"
 )
 
 func main() {
-    var args = os.Args[1:]
+    var inputFile string
+    var outputFile string
 
-    fmt.Printf("Args: %v\n", args)
+    flag.StringVar(&inputFile, "i", "", "Input file")
+    flag.StringVar(&outputFile, "o", "", "Output file")
+    flag.Parse()
 
-    var file = xasm.Load(args[0])
-    file.Parse()
-
-    for i, instruction := range file.GetParsedInstructions() {
-        fmt.Printf("Line %d:\n", i)
-        fmt.Printf("Instruction:\t%v\n", instruction)
-        fmt.Println()
+    if outputFile == "" {
+        outputFile = inputFile[0:strings.LastIndex(inputFile, ".")] + ".bin"
     }
+
+    var file = xasm.Load(inputFile)
+    file.Parse()
+    file.Assemble(outputFile)
 }
