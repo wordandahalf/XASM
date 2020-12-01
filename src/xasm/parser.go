@@ -82,16 +82,27 @@ func (file *xasmFile) Parse() {
 const (
     commentDelimiter        = ";"
     labelSuffix             = ":"
+
+    // Operand types
+    registerOperand         = "REGISTER"
+    registerPointerOperand  = "REGISTER_POINTER"
+    immediateOperand        = "IMMEDIATE"
+    labelOperand            = "STRING"
+    flagOperand             = "FLAG"
+    aluOpcodeOperand        = "ALU_OPCODE"
+    invalidOperand          = ""
 )
 
 var (
+    // Pre-processing regexes
     commentPattern, _           = regexp.Compile(commentDelimiter + "\\s*(.*)$")
     spacePattern, _             = regexp.Compile("[[:blank:]]{2,}")
 
+    // Regexes for line parsing
     labelPattern, _             = regexp.Compile("^([a-zA-Z_]+)" + labelSuffix + "$")
     instructionPattern, _       = regexp.Compile("^([a-zA-Z]+)(?: |$)")
-    operandPattern, _           = regexp.Compile("^\\s*\\w+\\s*$")
 
+    // Operand regexes
     registerPattern, _          = regexp.Compile("^[r][0-7]$")
     registerPointerPattern, _   = regexp.Compile("^\\[[r][0-7]]$")
     numberPattern, _            = regexp.Compile("[0-9]+")// regexp.Compile("^(0x[[:xdigit:]]{1,2}|0[0-7]{0,3})$")
@@ -127,6 +138,7 @@ var (
     }
 )
 
+// Parses the value of an xasmLine into an xasmInstruction
 func parseLine(line xasmLine) xasmInstruction {
     text := line.content
     instruction := xasmInstruction{"", []xasmOperand{}}
@@ -166,7 +178,7 @@ func parseLine(line xasmLine) xasmInstruction {
         labelMatches := labelPattern.FindStringSubmatch(text)
 
         if len(labelMatches) == 2 {
-            instruction = xasmInstruction{"LABEL", []xasmOperand { {"STRING", labelMatches[1] } }}
+            instruction = xasmInstruction{"LABEL", []xasmOperand { {labelOperand, labelMatches[1] } }}
         } else {
             index := strings.Index(line.content, strings.Split(strings.TrimSpace(text), " ")[0])
 
@@ -181,13 +193,15 @@ func parseLine(line xasmLine) xasmInstruction {
         mnemonic := instructionMatches[1]
         operands := make([]xasmOperand, 0)
 
+        // If there is any text left it must be an operand
         if text != "" {
+            // Split them by commas
             rawOperands := strings.Split(text, ",")
 
             for _, operand := range rawOperands {
                 parsedOperand := parseOperand(strings.TrimSpace(operand))
 
-                if parsedOperand.operandType != "" {
+                if parsedOperand.operandType != invalidOperand {
                     operands = append(operands, parsedOperand)
                 } else {
                     // This accounts for malformed operands with multiple spaces in between.
@@ -213,33 +227,34 @@ func parseLine(line xasmLine) xasmInstruction {
     return instruction
 }
 
+// Parses an operand into an xasmOperand struct
 func parseOperand(operand string) xasmOperand {
     if registerPattern.MatchString(operand) {
-        return xasmOperand{"REGISTER", operand}
+        return xasmOperand{registerOperand, operand}
     } else
     if registerPointerPattern.MatchString(operand) {
-        return xasmOperand{"REGISTER_POINTER", operand}
+        return xasmOperand{registerPointerOperand, operand}
     } else
     if numberPattern.MatchString(operand) {
         val, e := strconv.ParseInt(operand, 0, 8)
 
         if e == nil {
-            return xasmOperand{"IMMEDIATE", val}
+            return xasmOperand{immediateOperand, val}
         }
     } else
     if labelOperandPattern.MatchString(operand) {
-        return xasmOperand{"STRING", operand}
+        return xasmOperand{labelOperand, operand}
     }
 
-    return xasmOperand{"", operand}
+    return xasmOperand{invalidOperand, operand}
 }
 
 // Parses a jump instruction by prepending the second character of the mnemonic as a flag operand.
 func parseJump(mnemonic string, operands []xasmOperand) xasmInstruction {
-    return xasmInstruction{ "J", append([]xasmOperand { { "FLAG", strings.TrimPrefix(mnemonic, "J") } }, operands...)}
+    return xasmInstruction{ "J", append([]xasmOperand { {flagOperand, strings.TrimPrefix(mnemonic, "J") } }, operands...)}
 }
 
 // Parses an ALU instruction by prepending the ALU opcode of the instruction.
 func parseAlu(mnemonic string, operands []xasmOperand) xasmInstruction {
-    return xasmInstruction{"ALU", append([]xasmOperand { { "ALU_OPCODE", aluOpcodes[mnemonic] } }, operands...)}
+    return xasmInstruction{"ALU", append([]xasmOperand { {aluOpcodeOperand, aluOpcodes[mnemonic] } }, operands...)}
 }
