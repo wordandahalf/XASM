@@ -235,14 +235,15 @@ func getOperandsLength(operands []xasmOperand) int {
 
 // Parses a jump instruction by prepending the second character of the mnemonic as a flag operand.
 func parseJump(offset int, line int, mnemonic string, operands []xasmOperand) xasmInstruction {
-    flagValue, found := flagValues[strings.TrimPrefix(mnemonic, "J")]
+    flag := strings.TrimPrefix(mnemonic, "J")
+    flagValue, found := flagValues[flag]
 
     if found {
         return xasmInstruction{ line, offset, 2, "J", append([]xasmOperand { {flagOperand, flagValue } }, operands...)}
-    } else {
-        // TODO: error message
-        return xasmInstruction{line, offset, 0, invalidOperand, operands}
     }
+
+    log.Fatalf("Syntax error on line %d: invalid flag '%s'.\nThis error shouldn't be visible to an end user: parseJump should only be bound to valid jump commands!\n", line, flag)
+    return xasmInstruction{0, 0, 0, "", nil}
 }
 
 // Parses an ALU instruction by prepending the ALU opcode of the instruction.
