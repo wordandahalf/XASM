@@ -8,7 +8,7 @@ import (
 )
 
 var (
-    instructionEncoders = map[string]map[[3]string]func([]xasmOperand) []byte {
+    instructionEncoders = map[string]map[[3]string]func(*xasmFile, xasmInstruction) []byte {
         "NOP": {
             {}: encodeConstant(0x00),
         },
@@ -38,92 +38,104 @@ func (file *xasmFile) Assemble(path string) {
     check(err)
     defer f.Close()
 
-    for _, line := range file.lines {
-        instruction := line.instruction
-
-        if instruction.name == "" || instruction.name == "LABEL" {
-            continue
-        }
-
+    for _, instruction := range file.instructions {
         encoder := instructionEncoders[instruction.name][instruction.GetOperandTypes()]
 
         if encoder != nil {
             _, _ = f.Write(
-                encoder(instruction.operands),
+                encoder(file, instruction),
             )
         } else {
-            log.Fatalf( "Assembly error on line %d: unknown instruction '%s' with operands %v.\n", line.number, instruction.name, instruction.operands)
+            log.Fatalf( "Assembly error on line %d: unknown instruction '%s' with operands %v.\n", instruction.line, instruction.name, instruction.operands)
         }
     }
 }
 
-func encodeRegister(register string) byte {
+func encodeRegister(instruction xasmInstruction, register string) byte {
     val, e := strconv.ParseInt(strings.TrimPrefix(register, "r"), 10, 3)
 
     if e == nil {
         return (byte) (val & 0xFF)
     } else {
-        log.Fatalf("Assembly error: invalid register '%s'.\n", register)
+        log.Fatalf("Assembly error on line %d: invalid register '%s'.\n", instruction.line, register)
     }
 
     return 0
 }
 
-func encodeConstant(value byte) func([]xasmOperand) []byte {
-    return func([]xasmOperand) []byte {
+func encodeConstant(value byte) func(*xasmFile, xasmInstruction) []byte {
+    return func(*xasmFile, xasmInstruction) []byte {
         return []byte { value }
     }
 }
 
-func encodeLoadRegisterWithRegister(operands []xasmOperand) []byte {
-    dst := encodeRegister(operands[0].value.(string))
-    src := encodeRegister(operands[1].value.(string))
+func encodeLoadRegisterWithRegister(_ *xasmFile, instruction xasmInstruction) []byte {
+    operands := instruction.operands
+
+    dst := encodeRegister(instruction, operands[0].value.(string))
+    src := encodeRegister(instruction, operands[1].value.(string))
 
     return []byte { dst << 3 | src }
 }
 
-func encodeLoadRegisterPointerWithRegister(operands []xasmOperand) []byte {
-    dst := encodeRegister(operands[0].value.(string)[1:3])
-    src := encodeRegister(operands[1].value.(string))
+func encodeLoadRegisterPointerWithRegister(_ *xasmFile, instruction xasmInstruction) []byte {
+    operands := instruction.operands
+
+    dst := encodeRegister(instruction, operands[0].value.(string)[1:3])
+    src := encodeRegister(instruction, operands[1].value.(string))
 
     if dst != 0 {
-        log.Fatalf("Assembly error: invalid destination register pointer '%s'. Must be [r0].\n", operands[0].value.(string))
+        log.Fatalf("Assembly error on line %d: invalid destination register pointer '%s'. Must be [r0].\n", instruction.line, operands[0].value.(string))
     }
 
     return []byte { 0x40 | src }
 }
 
-func encodeLoadRegisterWithImmediate(operands []xasmOperand) []byte {
-    src := encodeRegister(operands[0].value.(string))
+func encodeLoadRegisterWithImmediate(_ *xasmFile, instruction xasmInstruction) []byte {
+    operands := instruction.operands
+
+    src := encodeRegister(instruction, operands[0].value.(string))
     immediate := operands[1].value.(byte)
 
     if src != 0 {
-        log.Fatalf("Assembly error: invalid immediate register destination '%s'. Must be r0.\n", operands[0].value.(string))
+        log.Fatalf("Assembly error on line %d: invalid immediate register destination '%s'. Must be r0.\n", instruction.line, operands[0].value.(string))
     }
 
     return []byte { 0x40, immediate }
 }
 
-func encodeDisplayRegister(operands []xasmOperand) []byte {
-    return []byte { 0x78 | encodeRegister(operands[0].value.(string)) }
+func encodeDisplayRegister(_ *xasmFile, instruction xasmInstruction) []byte {
+    operands := instruction.operands
+
+    return []byte { 0x78 | encodeRegister(instruction, operands[0].value.(string)) }
 }
 
-func encodeAluOperation(operands []xasmOperand) []byte {
+func encodeAluOperation(_ *xasmFile, instruction xasmInstruction) []byte {
+    operands := instruction.operands
+
     var src byte
 
     if len(operands) == 3 {
-        src = encodeRegister(operands[2].value.(string))
+        src = encodeRegister(instruction, operands[2].value.(string))
 
-        if encodeRegister(operands[1].value.(string)) != 0 {
-            log.Fatalf("Assembly error: invalid ALU destination register '%s'. Must be r0.\n", operands[1].value.(string))
+        if encodeRegister(instruction, operands[1].value.(string)) != 0 {
+            log.Fatalf("Assembly error on line %d: invalid ALU destination register '%s'. Must be r0.\n", instruction.line, operands[1].value.(string))
         }
     } else {
-        src = encodeRegister(operands[1].value.(string))
+        src = encodeRegister(instruction, operands[1].value.(string))
     }
 
     return []byte { 0x80 | (operands[0].value.(byte) << 3) | src }
 }
 
-func encodeJump(operands []xasmOperand) []byte {
-    return []byte { 0xC0 | operands[0].value.(byte) }
+func encodeJump(file *xasmFile, instruction xasmInstruction) []byte {
+    operands := instruction.operands
+    label := operands[1].value.(string)
+    labelOffset, found := file.symbols[label]
+
+    if !found {
+        log.Fatalf("Assembly error on line %d: undefined symbol '%s'.\n", instruction.line, label)
+    }
+
+    return []byte { 0xC0 | operands[0].value.(byte), labelOffset }
 }

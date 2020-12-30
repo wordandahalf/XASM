@@ -9,38 +9,6 @@ import (
     "strings"
 )
 
-type xasmFile struct {
-    path        string
-    lines       []xasmLine
-}
-
-type xasmLine struct {
-    number      int                 // The line number
-    content     string              // The raw content of the line
-
-    instruction xasmInstruction     // The instruction parsed from this line
-}
-
-type xasmInstruction struct {
-    name        string
-    operands    []xasmOperand
-}
-
-func (instruction xasmInstruction) GetOperandTypes() [3]string {
-    var operandTypes [3]string
-
-    for i, operand := range instruction.operands {
-        operandTypes[i] = operand.operandType
-    }
-
-    return operandTypes
-}
-
-type xasmOperand struct {
-    operandType string
-    value       interface{}
-}
-
 func check(e error) {
     if e != nil {
         panic(e)
@@ -48,7 +16,7 @@ func check(e error) {
 }
 
 func Load(path string) *xasmFile {
-    file := xasmFile{path, nil}
+    file := xasmFile{path, nil, []xasmInstruction {}, make(map[string]byte)}
 
     f, err := os.Open(file.path)
     check(err)
@@ -60,7 +28,7 @@ func Load(path string) *xasmFile {
     scanner := bufio.NewScanner(f)
 
     for scanner.Scan() {
-        lines = append(lines, xasmLine{index, scanner.Text(), xasmInstruction {"", nil}})
+        lines = append(lines, xasmLine{index, scanner.Text()})
         index++
     }
 
@@ -69,38 +37,21 @@ func Load(path string) *xasmFile {
     return &file
 }
 
-func (file xasmFile) GetLength() int {
-    return len(file.lines)
-}
-
-func (file xasmFile) GetParsedInstructions() []xasmInstruction {
-    instructions := make([]xasmInstruction, file.GetLength())
-
-    for i, line := range file.lines {
-        instructions[i] = line.instruction
-    }
-
-    return instructions
-}
-
 func (file *xasmFile) Parse() {
-    for i, line := range file.lines {
-        file.lines[i].instruction = parseLine(line)
+    previousInstruction := xasmInstruction{0, 0, 0, "", []xasmOperand {}}
+    for _, line := range file.lines {
+        parseLine(file, previousInstruction, line)
+
+        length := len(file.instructions)
+        if length > 0 {
+            previousInstruction = file.instructions[length- 1]
+        }
     }
 }
 
 const (
     commentDelimiter        = ";"
     labelSuffix             = ":"
-
-    // Operand types
-    registerOperand         = "REGISTER"
-    registerPointerOperand  = "REGISTER_POINTER"
-    immediateOperand        = "IMMEDIATE"
-    labelOperand            = "STRING"
-    flagOperand             = "FLAG"
-    aluOpcodeOperand        = "ALU_OPCODE"
-    invalidOperand          = ""
 )
 
 var (
@@ -120,7 +71,7 @@ var (
 
     // Special parsers for instructions that require further
     // processing of the mnemonic and operands.
-    instructionParsers      = map[string]func(string, []xasmOperand) xasmInstruction {
+    instructionParsers      = map[string]func(int, int, string, []xasmOperand) xasmInstruction {
         "JP": parseJump,
         "JZ": parseJump,
         "JC": parseJump,
@@ -154,19 +105,7 @@ var (
     }
 )
 
-// Parses the value of an xasmLine into an xasmInstruction
-func parseLine(line xasmLine) xasmInstruction {
-    text := line.content
-    instruction := xasmInstruction{"", []xasmOperand{}}
-
-    if text == "" {
-        return instruction
-    }
-
-    /*
-        Perform pre-processing actions...
-     */
-
+func sanitizeLine(text string) string {
     // Extract any comments
     if strings.Contains(text, commentDelimiter) {
         text = commentPattern.ReplaceAllString(text, "")
@@ -181,20 +120,39 @@ func parseLine(line xasmLine) xasmInstruction {
     // Remove leading and trailing whitespace
     text = strings.TrimSpace(text)
 
+    return text
+}
+
+// Parses the value of an xasmLine into an xasmInstruction
+func parseLine(file *xasmFile, previous xasmInstruction, line xasmLine) {
+    text := line.content
+
+    if text == "" {
+        return
+    }
+
+    /*
+        Perform pre-processing actions...
+     */
+    text = sanitizeLine(text)
+
     // If the line is empty, return the line
     if text == "" {
-        return instruction
+        return
     }
 
     /*
        Parse line...
     */
 
+    offset := previous.offset + previous.length
+
     if strings.Contains(text, labelSuffix) {
         labelMatches := labelPattern.FindStringSubmatch(text)
 
         if len(labelMatches) == 2 {
-            instruction = xasmInstruction{"LABEL", []xasmOperand { {labelOperand, labelMatches[1] } }}
+            file.symbols[labelMatches[1]] = (byte) (offset & 0xFF)
+            return
         } else {
             index := strings.Index(line.content, strings.Split(strings.TrimSpace(text), " ")[0])
 
@@ -231,16 +189,14 @@ func parseLine(line xasmLine) xasmInstruction {
             }
         }
 
-        parser, e := instructionParsers[mnemonic]
+        parser, found := instructionParsers[mnemonic]
 
-        if e {
-            instruction = parser(mnemonic, operands)
+        if found {
+            file.instructions = append(file.instructions, parser(line.number, offset, mnemonic, operands))
         } else {
-            instruction = xasmInstruction{mnemonic, operands}
+            file.instructions = append(file.instructions, xasmInstruction{line.number, offset, 1 + getOperandsLength(operands), mnemonic, operands})
         }
     }
-
-    return instruction
 }
 
 // Parses an operand into an xasmOperand struct
@@ -262,21 +218,34 @@ func parseOperand(operand string) xasmOperand {
         return xasmOperand{labelOperand, operand}
     }
 
+    // TODO: error message
     return xasmOperand{invalidOperand, operand}
 }
 
-// Parses a jump instruction by prepending the second character of the mnemonic as a flag operand.
-func parseJump(mnemonic string, operands []xasmOperand) xasmInstruction {
-    flagValue, e := flagValues[strings.TrimPrefix(mnemonic, "J")]
+func getOperandsLength(operands []xasmOperand) int {
+    length := 0
+    for _, operand := range operands {
+        if operand.operandType == immediateOperand {
+            length++
+        }
+    }
 
-    if e {
-        return xasmInstruction{ "J", append([]xasmOperand { {flagOperand, flagValue } }, operands...)}
+    return length
+}
+
+// Parses a jump instruction by prepending the second character of the mnemonic as a flag operand.
+func parseJump(offset int, line int, mnemonic string, operands []xasmOperand) xasmInstruction {
+    flagValue, found := flagValues[strings.TrimPrefix(mnemonic, "J")]
+
+    if found {
+        return xasmInstruction{ line, offset, 2, "J", append([]xasmOperand { {flagOperand, flagValue } }, operands...)}
     } else {
-        return xasmInstruction{invalidOperand, operands}
+        // TODO: error message
+        return xasmInstruction{line, offset, 0, invalidOperand, operands}
     }
 }
 
 // Parses an ALU instruction by prepending the ALU opcode of the instruction.
-func parseAlu(mnemonic string, operands []xasmOperand) xasmInstruction {
-    return xasmInstruction{"ALU", append([]xasmOperand { {aluOpcodeOperand, aluOpcodes[mnemonic] } }, operands...)}
+func parseAlu(offset int, line int, mnemonic string, operands []xasmOperand) xasmInstruction {
+    return xasmInstruction{line, offset, 1, "ALU", append([]xasmOperand { {aluOpcodeOperand, aluOpcodes[mnemonic] } }, operands...)}
 }
