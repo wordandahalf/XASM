@@ -14,8 +14,9 @@ var (
         },
         "LD": {
             { registerOperand, registerOperand }: encodeLoadRegisterWithRegister,
-            { registerPointerOperand, registerOperand }: encodeLoadRegisterPointerWithRegister,
             { registerOperand, immediateOperand }: encodeLoadRegisterWithImmediate,
+            { registerPointerOperand, registerOperand }: encodeLoadRegisterPointerWithRegister,
+            { registerOperand, registerPointerOperand }: encodeLoadRegisterWithRegisterPointer,
         },
         "DSPLY": {
             { registerOperand }: encodeDisplayRegister,
@@ -89,6 +90,19 @@ func encodeLoadRegisterPointerWithRegister(_ *xasmFile, instruction xasmInstruct
     }
 
     return []byte { 0x40 | src }
+}
+
+func encodeLoadRegisterWithRegisterPointer(_ *xasmFile, instruction xasmInstruction) [] byte {
+    operands := instruction.operands
+
+    dst := encodeRegister(instruction, operands[0].value.(string))
+    src := encodeRegister(instruction, operands[1].value.(string)[1:3])
+
+    if dst != 0 {
+        log.Fatalf("Assembly error on line %d: invalid destination register '%s'. Must be r0.\n", instruction.line, operands[0].value.(string))
+    }
+
+    return []byte { 0x48 | src }
 }
 
 func encodeLoadRegisterWithImmediate(_ *xasmFile, instruction xasmInstruction) []byte {
