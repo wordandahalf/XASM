@@ -38,13 +38,14 @@ func Load(path string) *xasmFile {
 }
 
 func (file *xasmFile) Parse() {
-    previousInstruction := xasmInstruction{0, 0, 0, "", []xasmOperand {}}
-    for _, line := range file.lines {
-        parseLine(file, previousInstruction, line)
+    offset := 0
 
-        length := len(file.instructions)
-        if length > 0 {
-            previousInstruction = file.instructions[length- 1]
+    for _, line := range file.lines {
+        parsedInstruction := parseLine(file, offset, line)
+        if parsedInstruction != nil {
+            file.instructions = append(file.instructions, *parsedInstruction)
+
+            offset += parsedInstruction.length
         }
     }
 }
@@ -124,11 +125,12 @@ func sanitizeLine(text string) string {
 }
 
 // Parses the value of an xasmLine into an xasmInstruction
-func parseLine(file *xasmFile, previous xasmInstruction, line xasmLine) {
+func parseLine(file *xasmFile, offset int, line xasmLine) *xasmInstruction {
+    parsedInstruction := xasmInstruction {line.number, offset, -1, invalidOperand, []xasmOperand{}}
     text := line.content
 
     if text == "" {
-        return
+        return nil
     }
 
     /*
@@ -138,21 +140,19 @@ func parseLine(file *xasmFile, previous xasmInstruction, line xasmLine) {
 
     // If the line is empty, return the line
     if text == "" {
-        return
+        return nil
     }
 
     /*
        Parse line...
     */
 
-    offset := previous.offset + previous.length
-
     if strings.Contains(text, labelSuffix) {
         labelMatches := labelPattern.FindStringSubmatch(text)
 
         if len(labelMatches) == 2 {
             file.symbols[labelMatches[1]] = (byte) (offset & 0xFF)
-            return
+            return nil
         } else {
             index := strings.Index(line.content, strings.Split(strings.TrimSpace(text), " ")[0])
 
@@ -192,11 +192,13 @@ func parseLine(file *xasmFile, previous xasmInstruction, line xasmLine) {
         parser, found := instructionParsers[mnemonic]
 
         if found {
-            file.instructions = append(file.instructions, parser(line.number, offset, mnemonic, operands))
+            parsedInstruction = parser(line.number, offset, mnemonic, operands)
         } else {
-            file.instructions = append(file.instructions, xasmInstruction{line.number, offset, 1 + getOperandsLength(operands), mnemonic, operands})
+            parsedInstruction = xasmInstruction{line.number, offset, 1 + getOperandsLength(operands), mnemonic, operands}
         }
     }
+
+    return &parsedInstruction
 }
 
 // Parses an operand into an xasmOperand struct
