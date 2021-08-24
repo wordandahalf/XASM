@@ -1,9 +1,9 @@
 package main
 
 import (
-    "./xasm"
     "flag"
     "strings"
+    "wordandahalf.org/xdn/xasm"
 )
 
 func main() {

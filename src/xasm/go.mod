@@ -1,1 +1,1 @@
-module "xasm"
+module "wordandahalf.org/xdn/xasm"
