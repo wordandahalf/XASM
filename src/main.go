@@ -14,6 +14,11 @@ func main() {
     flag.StringVar(&outputFile, "o", "", "Output file")
     flag.Parse()
 
+    if inputFile == "" {
+        flag.Usage()
+        return
+    }
+
     if outputFile == "" {
         outputFile = inputFile[0:strings.LastIndex(inputFile, ".")] + ".bin"
     }
