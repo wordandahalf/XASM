@@ -1,4 +1,6 @@
 .idea/
 pkg/
+build/
+
 fib.bin
 *.exe
